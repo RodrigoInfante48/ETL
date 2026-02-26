@@ -1,0 +1,29 @@
+version: 2
+
+models:
+  - name: mart_country_summary
+    description: "Final country-level analytical model with historical averages, latest snapshot, and performance classification."
+    columns:
+      - name: country_code
+        description: "ISO 2-letter country code"
+        data_tests:
+          - unique
+          - not_null
+      - name: performance_tier
+        description: "Economic performance classification based on health score"
+        data_tests:
+          - accepted_values:
+              values: ['High Performer', 'Mid Performer', 'Developing', 'Needs Attention']
+      - name: latest_health_score
+        description: "Economic health score 0-100 for latest year"
+        data_tests:
+          - not_null
+
+  - name: mart_global_trend
+    description: "Global yearly economic aggregates for time-series analysis."
+    columns:
+      - name: year
+        description: "Reference year"
+        data_tests:
+          - unique
+          - not_null

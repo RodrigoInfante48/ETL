@@ -1,0 +1,20 @@
+version: 2
+
+sources:
+  - name: world_bank
+    database: world_bank_db
+    schema: public
+    tables:
+      - name: economic_indicators
+        description: "Raw economic indicators from World Bank API ETL pipeline"
+        columns:
+          - name: country_code
+            description: "ISO 2-letter country code"
+            data_tests:
+              - not_null
+          - name: year
+            description: "Reference year"
+            data_tests:
+              - not_null
+          - name: gdp_current_usd
+            description: "GDP in current USD"
