@@ -7,8 +7,8 @@ DB_CONFIG = {
     "host": "localhost",
     "port": 5432,
     "database": "world_bank_db",
-    "user": "postgres",          # <-- Change to your PostgreSQL user
-    "password": "****REMOVED****"  # <-- Change to your PostgreSQL password
+    "user": "-----------------",          # <-- Change to your PostgreSQL user
+    "password": "--------------------"  # <-- Change to your PostgreSQL password
 }
 
 # Build the connection string for SQLAlchemy
