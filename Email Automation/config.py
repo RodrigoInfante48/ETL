@@ -4,8 +4,8 @@ DB_CONFIG = {
     "host": "localhost",
     "port": 5432,
     "database": "world_bank_db",
-    "user": "postgres",
-    "password": "4301077Reic.",
+    "user": "----------------",
+    "password": "---------------",
 }
 
 DB_URL = f"postgresql://{DB_CONFIG['user']}:{quote_plus(DB_CONFIG['password'])}@{DB_CONFIG['host']}:{DB_CONFIG['port']}/{DB_CONFIG['database']}"
