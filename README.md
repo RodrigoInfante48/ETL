@@ -7,3 +7,24 @@
 | **3. Optimization** | PostgreSQL | `PostgreSQL Materialized Views/` | Creates physical snapshots of complex dbt queries to ensure millisecond load times for BI tools. |
 | **4. Analysis** | Python (Seaborn) | `6Sigma Seaborn Graphs/` | Consumes clean data for advanced statistical analysis (control charts, variability, capability). |
 | **5. Reporting** | Python (HTML) | `Email Automation/` | Queries the DB to generate automated HTML reports and distributes them to stakeholders. |
+
+
+External libraries:
+
+pandas
+
+requests
+
+SQLAlchemy
+
+psycopg2-binary
+
+matplotlib
+
+seaborn
+
+numpy
+
+scipy
+
+schedule
