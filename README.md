@@ -9,22 +9,14 @@
 | **5. Reporting** | Python (HTML) | `Email Automation/` | Queries the DB to generate automated HTML reports and distributes them to stakeholders. |
 
 
-External libraries:
+**External libraries:**
 
-pandas
-
-requests
-
-SQLAlchemy
-
-psycopg2-binary
-
-matplotlib
-
-seaborn
-
-numpy
-
-scipy
-
-schedule
+* pandas
+* requests
+* SQLAlchemy
+* psycopg2-binary
+* matplotlib
+* seaborn
+* numpy
+* scipy
+* schedule
