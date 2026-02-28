@@ -1,31 +1,9 @@
-```mermaid
-flowchart LR
-    subgraph 1. Python ETL
-        A[fa:fa-download extract.py] --> B[fa:fa-code transform.py]
-        B --> C[fa:fa-upload load.py]
-    end
+## 🧠 Project ETL Architecture & Data Flow
 
-    subgraph 2. Data Warehouse
-        C --> D[(PostgreSQL)]
-    end
-
-    subgraph 3. dbt Analytics Engineering
-        D --> E[Staging \n stg_models]
-        E --> F[Intermediate \n int_models]
-        F --> G[Marts \n mart_models]
-    end
-
-    subgraph 4. BI Optimization
-        G --> H[(Materialized \n Views)]
-    end
-
-    subgraph 5. Consumption Layer
-        H --> I[fa:fa-chart-bar BI Tools \n Power BI / Tableau]
-        H --> J[fa:fa-chart-line 6Sigma \n Seaborn Graphs]
-        D --> K[fa:fa-envelope Email \n Automation]
-    end
-    
-    %% Estilos opcionales para que se vea mejor
-    style D fill:#336791,stroke:#fff,stroke-width:2px,color:#fff
-    style H fill:#336791,stroke:#fff,stroke-width:2px,color:#fff
-```
+| Stage | Technology | Core Files / Directories | Description |
+| :--- | :--- | :--- | :--- |
+| **1. Extraction & Load** | Python | `World bank/run_pipeline.py` | Extracts raw data via API/CSV, applies basic Pandas cleaning, and loads it into PostgreSQL. |
+| **2. Transformation** | dbt | `world_bank_dbt/models/` | Applies ELT principles using the Modern Data Stack. Transforms raw data through *Staging*, *Intermediate*, and *Marts* layers. |
+| **3. Optimization** | PostgreSQL | `PostgreSQL Materialized Views/` | Creates physical snapshots of complex dbt queries to ensure millisecond load times for BI tools. |
+| **4. Analysis** | Python (Seaborn) | `6Sigma Seaborn Graphs/` | Consumes clean data for advanced statistical analysis (control charts, variability, capability). |
+| **5. Reporting** | Python (HTML) | `Email Automation/` | Queries the DB to generate automated HTML reports and distributes them to stakeholders. |
