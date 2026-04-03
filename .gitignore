@@ -1,0 +1,27 @@
+# Environment variables — NEVER commit credentials
+.env
+.env.*
+*.env
+
+# dbt profiles (contain DB credentials)
+~/.dbt/profiles.yml
+profiles.yml
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log

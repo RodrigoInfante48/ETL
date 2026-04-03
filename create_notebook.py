@@ -77,12 +77,15 @@ COLORS = {
 LATAM = ['CO', 'BR', 'MX', 'AR', 'CL', 'PE']
 
 # ── Database connection ────────────────────────────────────────────────────────
-# UPDATE with your credentials
-DB_USER     = 'postgres'
-DB_PASSWORD = '4301077Reic.'
-DB_HOST     = 'localhost'
-DB_PORT     = 5432
-DB_NAME     = 'world_bank_db'
+# Set these via environment variables or replace before running locally:
+#   export DB_USER=postgres
+#   export DB_PASSWORD=your_password
+import os
+DB_USER     = os.getenv('DB_USER', 'postgres')
+DB_PASSWORD = os.getenv('DB_PASSWORD', 'your_password_here')
+DB_HOST     = os.getenv('DB_HOST', 'localhost')
+DB_PORT     = int(os.getenv('DB_PORT', '5432'))
+DB_NAME     = os.getenv('DB_NAME', 'world_bank_db')
 
 engine = create_engine(
     f"postgresql://{DB_USER}:{quote_plus(DB_PASSWORD)}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
