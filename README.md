@@ -7,3 +7,4 @@
 | **3. Optimization** | PostgreSQL | `PostgreSQL Materialized Views/` | Creates physical snapshots of complex dbt queries to ensure millisecond load times for BI tools. | *N/A (Native SQL)* |
 | **4. Analysis** | Python (Seaborn) | `6Sigma Seaborn Graphs/` | Consumes clean data for advanced statistical analysis (control charts, variability, capability). | `pandas`, `matplotlib`, `seaborn`, `numpy`, `scipy` |
 | **5. Reporting** | Python (HTML) | `Email Automation/` | Queries the DB to generate automated HTML reports and distributes them to stakeholders. | `smtplib`, `email`, `base64`, `io`, `SQLAlchemy`, `datetime` |
+| **6. Distributed Processing** | PySpark | `PySpark Analysis/run_spark_pipeline.py` | Replicates the ETL pipeline on the Spark engine with distributed transformations, advanced analytics (outlier detection, LATAM benchmarking, decade comparison), and MLlib models (K-Means clustering, Linear Regression). | `pyspark`, `pandas`, `numpy` |
