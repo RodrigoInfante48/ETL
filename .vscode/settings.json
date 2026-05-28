@@ -1,0 +1,80 @@
+{
+  // ─── dbt Power User ────────────────────────────────────────────────────────
+  // Point the extension at the project folder and the profiles.yml that lives
+  // inside it (not the ~/.dbt default).  This lets the whole team share one
+  // profiles.yml committed to the repo without touching their home directory.
+  "dbt.projectsDir": "${workspaceFolder}/world_bank_dbt",
+  "dbt.profilesDir": "${workspaceFolder}/world_bank_dbt",
+  "dbt.targetName": "dev",
+
+  // Show the model lineage panel on the side automatically when a .sql file
+  // under world_bank_dbt/models/ is opened.
+  "dbt.showLineageOnFileOpen": true,
+
+  // Compile SQL on save so the compiled preview is always fresh.
+  "dbt.compileOnSave": true,
+
+  // How many rows dbt show / query preview returns (dbt Power User query panel).
+  "dbt.queryLimit": 200,
+
+  // dbt Power User: run dbt commands with --profiles-dir flag so dbt CLI
+  // also picks up the project's profiles.yml (not ~/.dbt).
+  "dbt.runModelCommandAdditionalParams": "--profiles-dir .",
+  "dbt.testModelCommandAdditionalParams": "--profiles-dir .",
+  "dbt.compileModelCommandAdditionalParams": "--profiles-dir .",
+
+  // ─── Editor: SQL files ─────────────────────────────────────────────────────
+  "[sql]": {
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "innoverio.vscode-dbt-power-user",
+    "editor.tabSize": 4,
+    "editor.insertSpaces": true
+  },
+
+  // ─── Editor: YAML files (schema.yml, sources.yml, dbt_project.yml) ─────────
+  "[yaml]": {
+    "editor.formatOnSave": true,
+    "editor.tabSize": 2,
+    "editor.insertSpaces": true
+  },
+
+  // Treat Jinja-SQL files (.sql in dbt models) correctly.
+  "files.associations": {
+    "**/world_bank_dbt/models/**/*.sql": "jinja-sql",
+    "**/world_bank_dbt/macros/**/*.sql": "jinja-sql",
+    "**/world_bank_dbt/analyses/**/*.sql": "jinja-sql",
+    "**/world_bank_dbt/tests/**/*.sql": "jinja-sql"
+  },
+
+  // ─── Python (for World bank/, PySpark Analysis/, etc.) ────────────────────
+  "python.defaultInterpreterPath": "/usr/bin/python3",
+
+  // ─── YAML schema validation ────────────────────────────────────────────────
+  // Associates dbt schema files with the dbt JSON Schema so VS Code validates
+  // model, column, test definitions inline.
+  "yaml.schemas": {
+    "https://raw.githubusercontent.com/dbt-labs/dbt-jsonschema/main/schemas/latest/dbt_yml_files-latest.json": [
+      "world_bank_dbt/models/**/*.yml",
+      "world_bank_dbt/metrics/**/*.yml",
+      "world_bank_dbt/seeds/**/*.yml",
+      "world_bank_dbt/snapshots/**/*.yml"
+    ],
+    "https://raw.githubusercontent.com/dbt-labs/dbt-jsonschema/main/schemas/latest/dbt_project-latest.json": [
+      "world_bank_dbt/dbt_project.yml"
+    ]
+  },
+
+  // ─── File explorer: hide generated dbt artefacts from the sidebar ──────────
+  "files.exclude": {
+    "**/world_bank_dbt/target": true,
+    "**/world_bank_dbt/dbt_packages": true,
+    "**/__pycache__": true,
+    "**/*.pyc": true
+  },
+
+  // ─── Search: skip compiled SQL and installed packages ──────────────────────
+  "search.exclude": {
+    "**/world_bank_dbt/target/**": true,
+    "**/world_bank_dbt/dbt_packages/**": true
+  }
+}

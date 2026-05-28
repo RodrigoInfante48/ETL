@@ -1,0 +1,115 @@
+version: 2
+
+models:
+
+  - name: mart_latam_comparison
+    description: >
+      LATAM-focused analytical model. Compares the 7 Latin American countries
+      (CO, BR, MX, AR, CL, PE, EC) against each other and against the non-LATAM
+      benchmark (USA, China, Germany) for every year in the dataset.
+      Grain: country_code × year (unique).
+      Designed for LATAM dashboards, convergence tracking, and intra-regional
+      ranking tables.
+    meta:
+      owner: data-engineering
+      domain: economic-indicators
+      freshness_sla: daily
+      source: World Bank Open Data API
+      layer: marts
+    tags:
+      - economic
+      - latam
+      - world_bank
+      - comparison
+    columns:
+
+      - name: country_code
+        description: ISO 3166-1 alpha-2 code for one of the 7 LATAM countries.
+        data_tests:
+          - not_null
+
+      - name: country_name
+        description: Full English country name.
+
+      - name: year
+        description: Calendar year (integer, 2000–2023).
+        data_tests:
+          - not_null
+
+      - name: gdp_usd
+        description: GDP in current USD for this country and year.
+        data_tests:
+          - not_null
+
+      - name: gdp_per_capita_usd
+        description: GDP per capita in current USD.
+
+      - name: inflation_pct
+        description: Annual CPI inflation rate (%).
+
+      - name: unemployment_pct
+        description: Unemployment rate (% of labour force).
+
+      - name: population
+        description: Total mid-year population.
+
+      - name: gdp_growth_pct
+        description: YoY GDP growth (%). NULL for the first year per country.
+
+      - name: gdp_per_capita_growth_pct
+        description: YoY GDP per capita growth (%). NULL for first year.
+
+      - name: economic_health_score
+        description: Composite welfare score (0–100). Inherited from int_country_metrics.
+        data_tests:
+          - not_null
+
+      - name: latam_rank_gdp_per_capita
+        description: Rank within LATAM for GDP per capita this year (1 = highest).
+
+      - name: latam_rank_health_score
+        description: Rank within LATAM for economic_health_score this year (1 = best).
+
+      - name: latam_rank_inflation
+        description: Rank within LATAM for inflation this year (1 = lowest inflation).
+
+      - name: latam_rank_unemployment
+        description: Rank within LATAM for unemployment this year (1 = lowest rate).
+
+      - name: gap_gdp_per_capita_vs_benchmark
+        description: >
+          Difference between this country's GDP per capita and the non-LATAM
+          benchmark average (USA + China + Germany). Negative = below benchmark.
+
+      - name: gap_inflation_vs_benchmark
+        description: >
+          Difference between this country's inflation and the non-LATAM
+          benchmark average. Positive = higher inflation than benchmark.
+
+      - name: gap_unemployment_vs_benchmark
+        description: >
+          Difference between this country's unemployment and the non-LATAM
+          benchmark average. Positive = higher unemployment than benchmark.
+
+      - name: gap_health_score_vs_benchmark
+        description: >
+          Difference between this country's health score and the benchmark.
+          Negative means the country scores below the non-LATAM average.
+
+      - name: benchmark_gdp_per_capita
+        description: Average GDP per capita across USA, China, Germany for this year.
+
+      - name: benchmark_inflation_pct
+        description: Average inflation across USA, China, Germany for this year.
+
+      - name: benchmark_unemployment_pct
+        description: Average unemployment across USA, China, Germany for this year.
+
+      - name: benchmark_health_score
+        description: Average health score across USA, China, Germany for this year.
+
+      - name: is_converging_to_benchmark
+        description: >
+          TRUE if the gap_health_score_vs_benchmark improved (grew less negative
+          or became more positive) compared to the prior year. Tracks whether
+          LATAM countries are catching up to the non-LATAM benchmark over time.
