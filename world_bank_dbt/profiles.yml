@@ -1,0 +1,93 @@
+# =============================================================================
+# profiles.yml — dbt connection targets for world_bank_dbt
+#
+# Location strategy
+# ──────────────────
+# This file lives inside world_bank_dbt/ and the workflows set
+#   DBT_PROFILES_DIR (or pass --profiles-dir .) so dbt finds it here.
+# This keeps credentials-as-env-vars in version control alongside the project,
+# while the actual secret values live only in CI secrets / .env files.
+#
+# Target overview
+# ────────────────
+# ┌──────┬──────────────────────────────┬──────────────────────────────────────┐
+# │Target│ Schema pattern               │ When used                            │
+# ├──────┼──────────────────────────────┼──────────────────────────────────────┤
+# │ dev  │ dbt_<user>_staging / …       │ Local development (default)          │
+# │ ci   │ ci_<run_id>_staging / …      │ GitHub Actions CI (ephemeral per PR) │
+# │ prod │ staging / intermediate/marts │ Production — generate_schema_name    │
+# │      │ (clean names, no prefix)     │ macro strips the prefix on prod      │
+# └──────┴──────────────────────────────┴──────────────────────────────────────┘
+#
+# Dev quickstart
+# ───────────────
+# Copy .env.example → .env, fill in values, then:
+#   export $(cat .env | xargs) && dbt run
+# Or use direnv: add `dotenv` to your .envrc.
+#
+# Required environment variables (per target)
+# ────────────────────────────────────────────
+# dev / ci:
+#   DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME
+#   DBT_USER    (dev only — used as the schema prefix, e.g. "jsmith")
+#   CI_BUILD_ID (ci  only — injected by GitHub Actions as the run ID)
+#
+# prod:
+#   DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME  (from repo secrets)
+# =============================================================================
+
+world_bank_dbt:
+  target: dev   # default; override with --target <name> or DBT_TARGET env var
+
+  outputs:
+
+    # ─── DEV ──────────────────────────────────────────────────────────────────
+    # Schemas: dbt_<user>_staging, dbt_<user>_intermediate, dbt_<user>_marts
+    # Set DBT_USER to your username so colleagues don't collide:
+    #   export DBT_USER=jsmith
+    dev:
+      type: postgres
+      host: "{{ env_var('DB_HOST', 'localhost') }}"
+      port: "{{ env_var('DB_PORT', '5432') | int }}"
+      user: "{{ env_var('DB_USER', 'postgres') }}"
+      password: "{{ env_var('DB_PASSWORD', '') }}"
+      dbname: "{{ env_var('DB_NAME', 'world_bank_db') }}"
+      schema: "dbt_{{ env_var('DBT_USER', 'dev') }}"
+      threads: 4
+      keepalives_idle: 0
+      connect_timeout: 10
+
+    # ─── CI ───────────────────────────────────────────────────────────────────
+    # Schemas: ci_<run_id>_staging, ci_<run_id>_intermediate, ci_<run_id>_marts
+    # Each PR gets its own ephemeral schemas keyed to the GitHub Actions run ID.
+    # These are never cleaned up automatically — add a scheduled cleanup job or
+    # use a Postgres event trigger on the CI database if needed.
+    ci:
+      type: postgres
+      host: "{{ env_var('DB_HOST', 'localhost') }}"
+      port: "{{ env_var('DB_PORT', '5432') | int }}"
+      user: "{{ env_var('DB_USER', 'dbt_ci') }}"
+      password: "{{ env_var('DB_PASSWORD', '') }}"
+      dbname: "{{ env_var('DB_NAME', 'world_bank_ci') }}"
+      schema: "ci_{{ env_var('CI_BUILD_ID', 'local') }}"
+      threads: 4
+      keepalives_idle: 0
+      connect_timeout: 10
+
+    # ─── PROD ─────────────────────────────────────────────────────────────────
+    # Schemas: staging, intermediate, marts  (no prefix — see generate_schema_name.sql)
+    # The generate_schema_name macro checks target.name == 'prod' and skips the
+    # default_schema prefix, so models land directly in the clean schema names
+    # configured in dbt_project.yml (+schema: staging / intermediate / marts).
+    prod:
+      type: postgres
+      host: "{{ env_var('DB_HOST') }}"
+      port: "{{ env_var('DB_PORT', '5432') | int }}"
+      user: "{{ env_var('DB_USER') }}"
+      password: "{{ env_var('DB_PASSWORD') }}"
+      dbname: "{{ env_var('DB_NAME', 'world_bank_db') }}"
+      schema: analytics        # base schema; individual model schemas override this
+      threads: 8
+      keepalives_idle: 0
+      connect_timeout: 10
+      search_path: public

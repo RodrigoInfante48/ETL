@@ -1,0 +1,173 @@
+# =============================================================================
+# dbt Slim CI — fires on every PR targeting main
+#
+# Slim CI strategy
+# ─────────────────
+# 1. Download the manifest.json uploaded by the last successful prod run.
+# 2. Use `--select state:modified+` so only models (and their descendants)
+#    that changed in this PR are built and tested.
+# 3. If no prod manifest exists yet (first ever run), fall back to full build.
+#
+# dbt build vs dbt run + dbt test
+# ────────────────────────────────
+# `dbt build` executes models AND their tests node-by-node in DAG order.
+# If model A fails, dbt skips model B (which depends on A) and its tests.
+# This is correct for CI: you never run tests on data produced by a broken model.
+# `dbt run && dbt test` runs all models first, then all tests — useful in prod
+# when you want every model to attempt to materialise even if one fails, so you
+# can see the full picture of failures at once.
+# =============================================================================
+
+name: dbt CI (Slim)
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "world_bank_dbt/**"
+      - ".github/workflows/dbt_ci.yml"
+
+env:
+  PYTHON_VERSION: "3.11"
+  DBT_VERSION: "dbt-core==1.8.* dbt-postgres==1.8.*"
+
+jobs:
+  dbt-slim-ci:
+    name: Slim CI — state:modified+
+    runs-on: ubuntu-latest
+
+    # ── Ephemeral PostgreSQL for the CI run ────────────────────────────────────
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: dbt_ci
+          POSTGRES_PASSWORD: ${{ secrets.CI_DB_PASSWORD }}
+          POSTGRES_DB: world_bank_ci
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      # ── 1. Checkout ──────────────────────────────────────────────────────────
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # needed for git-based state comparison
+
+      # ── 2. Python + pip cache ────────────────────────────────────────────────
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      # ── 3. dbt package cache (keyed on packages.yml hash) ───────────────────
+      - name: Cache dbt packages
+        uses: actions/cache@v4
+        with:
+          path: world_bank_dbt/dbt_packages
+          key: dbt-pkgs-${{ runner.os }}-${{ hashFiles('world_bank_dbt/packages.yml') }}
+          restore-keys: dbt-pkgs-${{ runner.os }}-
+
+      # ── 4. Install dbt ───────────────────────────────────────────────────────
+      - name: Install dbt
+        run: pip install --quiet ${{ env.DBT_VERSION }}
+
+      # ── 5. Fetch prod manifest for state comparison ──────────────────────────
+      #    Uses dawidd6/action-download-artifact (MIT) to pull the manifest.json
+      #    artifact uploaded by dbt_prod.yml on the last successful main run.
+      #    `continue-on-error: true` so the job doesn't fail on the very first PR.
+      - name: Download prod manifest (Slim CI baseline)
+        id: get-manifest
+        continue-on-error: true
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          workflow: dbt_prod.yml
+          branch: main
+          name: dbt-prod-manifest
+          path: prod-manifest/
+
+      # ── 6. dbt deps ──────────────────────────────────────────────────────────
+      - name: dbt deps
+        working-directory: world_bank_dbt
+        run: dbt deps
+
+      # ── 7. dbt compile — catches Jinja / SQL syntax errors immediately ───────
+      - name: dbt compile
+        working-directory: world_bank_dbt
+        env:
+          DBT_TARGET: ci
+          CI_BUILD_ID: pr-${{ github.event.pull_request.number }}-run-${{ github.run_id }}
+          DB_HOST: localhost
+          DB_PORT: "5432"
+          DB_USER: dbt_ci
+          DB_PASSWORD: ${{ secrets.CI_DB_PASSWORD }}
+          DB_NAME: world_bank_ci
+        run: dbt compile --target ci --profiles-dir .
+
+      # ── 8. List modified models (informational) ──────────────────────────────
+      - name: List state:modified+ models
+        id: list-modified
+        working-directory: world_bank_dbt
+        env:
+          DBT_TARGET: ci
+          CI_BUILD_ID: pr-${{ github.event.pull_request.number }}-run-${{ github.run_id }}
+          DB_HOST: localhost
+          DB_PORT: "5432"
+          DB_USER: dbt_ci
+          DB_PASSWORD: ${{ secrets.CI_DB_PASSWORD }}
+          DB_NAME: world_bank_ci
+        run: |
+          if [ -f "../prod-manifest/manifest.json" ]; then
+            echo "Slim CI active — comparing against prod manifest"
+            dbt ls \
+              --select state:modified+ \
+              --state ../prod-manifest \
+              --target ci \
+              --profiles-dir . \
+              --output name 2>&1 | tee modified_models.txt
+          else
+            echo "No prod manifest found — listing all models (full build)"
+            dbt ls --target ci --profiles-dir . --output name 2>&1 | tee modified_models.txt
+          fi
+          echo "### Modified dbt models" >> $GITHUB_STEP_SUMMARY
+          cat modified_models.txt >> $GITHUB_STEP_SUMMARY
+
+      # ── 9. dbt build (models + tests, DAG-ordered per node) ──────────────────
+      #    --defer: resolve unmodified nodes from the prod manifest so their
+      #             upstream tables don't need to exist in the CI schema.
+      - name: dbt build (state:modified+)
+        working-directory: world_bank_dbt
+        env:
+          DBT_TARGET: ci
+          CI_BUILD_ID: pr-${{ github.event.pull_request.number }}-run-${{ github.run_id }}
+          DB_HOST: localhost
+          DB_PORT: "5432"
+          DB_USER: dbt_ci
+          DB_PASSWORD: ${{ secrets.CI_DB_PASSWORD }}
+          DB_NAME: world_bank_ci
+        run: |
+          if [ -f "../prod-manifest/manifest.json" ]; then
+            dbt build \
+              --select state:modified+ \
+              --state ../prod-manifest \
+              --defer \
+              --target ci \
+              --profiles-dir .
+          else
+            dbt build --target ci --profiles-dir .
+          fi
+
+      # ── 10. Upload CI manifest (optional — lets you compare CI-to-CI too) ────
+      - name: Upload CI manifest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dbt-ci-manifest-pr${{ github.event.pull_request.number }}
+          path: world_bank_dbt/target/manifest.json
+          retention-days: 7
