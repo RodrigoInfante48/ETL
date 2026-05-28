@@ -1,0 +1,150 @@
+version: 2
+
+# Both mart models are declared public so that reporting_layer can cross-ref them.
+# Contracts are enforced to protect reporting_layer from silent schema drift.
+
+models:
+  - name: mart_country_summary
+    description: >
+      One row per country. Combines historical averages (2000–2023) with a
+      latest-year snapshot and a performance tier classification.
+      Primary key: country_code.
+    group: country_analytics_team
+    access: public
+    config:
+      contract:
+        enforced: true
+
+    columns:
+      - name: country_code
+        data_type: varchar
+        constraints:
+          - type: not_null
+        tests:
+          - not_null
+          - unique
+
+      - name: country_name
+        data_type: varchar
+        constraints:
+          - type: not_null
+
+      - name: is_latam
+        data_type: boolean
+        constraints:
+          - type: not_null
+
+      - name: years_reported
+        data_type: bigint
+
+      - name: first_year
+        data_type: integer
+
+      - name: last_year
+        data_type: integer
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 2020
+              max_value: 2024
+
+      - name: avg_gdp_usd
+        data_type: numeric
+
+      - name: avg_gdp_per_capita_usd
+        data_type: numeric
+
+      - name: avg_inflation_pct
+        data_type: numeric
+
+      - name: avg_unemployment_pct
+        data_type: numeric
+
+      - name: avg_population
+        data_type: numeric
+
+      - name: avg_gdp_growth_pct
+        data_type: numeric
+
+      - name: avg_health_score
+        data_type: numeric
+
+      - name: latest_gdp_usd
+        data_type: numeric
+
+      - name: latest_gdp_per_capita_usd
+        data_type: numeric
+
+      - name: latest_inflation_pct
+        data_type: numeric
+
+      - name: latest_unemployment_pct
+        data_type: numeric
+
+      - name: latest_population
+        data_type: numeric
+
+      - name: latest_gdp_growth_pct
+        data_type: numeric
+
+      - name: latest_health_score
+        data_type: numeric
+
+      - name: performance_tier
+        data_type: varchar
+        tests:
+          - accepted_values:
+              values: ['High Performer', 'Mid Performer', 'Developing', 'Needs Attention']
+
+      - name: rank_gdp_per_capita
+        data_type: bigint
+
+  - name: mart_global_trend
+    description: >
+      One row per year (2000–2023). World-level aggregates: total GDP,
+      average indicators across the 10-country panel, and YoY world GDP growth.
+      Primary key: year.
+    group: country_analytics_team
+    access: public
+    config:
+      contract:
+        enforced: true
+
+    columns:
+      - name: year
+        data_type: integer
+        constraints:
+          - type: not_null
+        tests:
+          - not_null
+          - unique
+
+      - name: countries_count
+        data_type: bigint
+
+      - name: world_gdp_usd
+        data_type: numeric
+
+      - name: avg_gdp_per_capita_usd
+        data_type: numeric
+
+      - name: avg_inflation_pct
+        data_type: numeric
+
+      - name: min_inflation_pct
+        data_type: numeric
+
+      - name: max_inflation_pct
+        data_type: numeric
+
+      - name: avg_unemployment_pct
+        data_type: numeric
+
+      - name: world_population
+        data_type: numeric
+
+      - name: avg_health_score
+        data_type: numeric
+
+      - name: world_gdp_growth_pct
+        description: YoY world GDP growth (%). NULL for year 2000.
+        data_type: numeric

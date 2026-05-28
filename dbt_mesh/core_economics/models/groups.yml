@@ -1,0 +1,15 @@
+version: 2
+
+# ─── Groups ──────────────────────────────────────────────────────────────────
+# A group is a logical owner of a set of models within a project.
+# The owner is responsible for the public contract of any model with access: public.
+# Private models are only accessible to other models in the SAME group.
+# Protected models are accessible to all models in the same project.
+# Public models are accessible cross-project (via dependencies.yml + dbt Cloud /
+# shared manifest in dbt Core).
+
+groups:
+  - name: data_engineering
+    owner:
+      name: "Data Engineering Team"
+      email: "data-engineering@worldbank-etl.io"

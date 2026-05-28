@@ -1,0 +1,137 @@
+version: 2
+
+# ════════════════════════════════════════════════════════════════════════════════
+# PUBLIC MODEL: int_country_metrics
+#
+# This is the producer/consumer contract boundary.
+# Any downstream project (country_analytics, reporting_layer) depends on this
+# model's declared columns and data types being stable across releases.
+#
+# ─── Access hierarchy recap ───────────────────────────────────────────────────
+#   private   → only this model's group (data_engineering) can ref it
+#   protected → any model inside core_economics can ref it
+#   public    → any model in ANY project (cross-project ref) can ref it
+#
+# ─── Contract enforcement ────────────────────────────────────────────────────
+# When contract.enforced: true, dbt validates at compile/run time that:
+#   1. The SELECT output has exactly the declared columns (no extras, no missing)
+#   2. Each column has the declared data_type
+#   3. NOT NULL constraints are honoured
+# Any mismatch fails the run BEFORE touching the database — safe for producers.
+#
+# ─── Model versioning ────────────────────────────────────────────────────────
+# Versioning lets the producer make breaking changes while giving consumers a
+# grace period to migrate.
+#
+# latest_version: 2 → {{ ref('int_country_metrics') }} resolves to v2
+# Consumer that hasn't migrated yet pins explicitly:
+#     {{ ref('int_country_metrics', v=1) }}
+#
+# Breaking change example:
+#   v1 → v2 added gdp_per_capita_growth_pct (new column = additive, non-breaking)
+#   v2 → v3 renames economic_health_score → composite_score (breaking: consumers
+#            that SELECT economic_health_score by name will error) → bump version
+# ════════════════════════════════════════════════════════════════════════════════
+
+models:
+  - name: int_country_metrics
+    description: >
+      Canonical analytical grain: country_code × year. Enriches staging with
+      YoY growth rates, a composite economic health score (0–100), and a LATAM
+      region flag. This is the single source of truth consumed by all downstream
+      projects in the mesh.
+    group: data_engineering
+    access: public              # ← the key declaration that opens cross-project refs
+
+    latest_version: 2           # ← default for ref('core_economics','int_country_metrics')
+    versions:
+      - v: 1                    # runs int_country_metrics_v1.sql
+                                # deprecated: missing gdp_per_capita_growth_pct
+                                # kept alive during consumer migration window
+      - v: 2                    # runs int_country_metrics_v2.sql  (current)
+
+    config:
+      contract:
+        enforced: true          # ← dbt validates output schema matches columns below
+
+    # Table-level constraints (supported on adapters that enforce them: PG, Snowflake, BQ)
+    constraints:
+      - type: primary_key
+        columns: [country_code, year]
+
+    # ── Declared column contract ──────────────────────────────────────────────
+    # Every public column must be declared here with data_type.
+    # Consumers who depend on this contract know these columns will NEVER be
+    # removed or renamed without a version bump.
+    columns:
+      - name: country_code
+        description: ISO 3166-1 alpha-2 code.
+        data_type: varchar
+        constraints:
+          - type: not_null
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['CO','BR','MX','AR','CL','PE','EC','US','CN','DE']
+
+      - name: country_name
+        data_type: varchar
+        constraints:
+          - type: not_null
+
+      - name: year
+        data_type: integer
+        constraints:
+          - type: not_null
+        tests:
+          - not_null
+
+      - name: gdp_usd
+        description: GDP in current USD.
+        data_type: numeric
+
+      - name: gdp_per_capita_usd
+        data_type: numeric
+
+      - name: inflation_pct
+        description: Annual CPI inflation rate (%).
+        data_type: numeric
+
+      - name: unemployment_pct
+        description: ILO modelled unemployment rate (%).
+        data_type: numeric
+
+      - name: population
+        data_type: numeric
+
+      - name: gdp_growth_pct
+        description: >
+          Year-over-year GDP growth (%). NULL for the first observed year
+          per country (no prior year to compare against).
+        data_type: numeric
+
+      - name: gdp_per_capita_growth_pct
+        description: >
+          Year-over-year GDP per capita growth (%). Added in v2.
+          NULL for first observed year per country.
+        data_type: numeric
+        # NOTE: consumers pinned to v1 won't see this column.
+        # Consumers using the unversioned ref get v2 (latest_version).
+
+      - name: economic_health_score
+        description: >
+          Composite score 0–100.
+            GDP per capita component (50%): min(gdp_pc / 80k * 50, 50)
+            Inflation component   (25%): max(25 - |inflation - 2| * 2, 0)
+            Unemployment component(25%): max(25 - unemployment * 2, 0)
+        data_type: numeric
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+              max_value: 100
+
+      - name: is_latam
+        description: True for CO, BR, MX, AR, CL, PE, EC; false otherwise.
+        data_type: boolean
+        constraints:
+          - type: not_null

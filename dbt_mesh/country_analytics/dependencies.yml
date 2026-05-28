@@ -1,0 +1,36 @@
+# ════════════════════════════════════════════════════════════════════════════════
+# dependencies.yml — cross-project dependency declaration
+#
+# This file tells dbt that country_analytics consumes PUBLIC models from
+# core_economics. Without this file, {{ ref('core_economics', '...') }} will fail
+# at compile time.
+#
+# ─── How resolution works ────────────────────────────────────────────────────
+#
+# dbt Cloud (recommended):
+#   The dbt Cloud Metadata API automatically provides the upstream project's
+#   manifest. No extra flags needed. dbt Cloud reads this file and wires up the
+#   lineage graph across projects.
+#
+# dbt Core (open source):
+#   You must manually share the upstream manifest.json, then pass --state:
+#
+#     # Step 1 — run and export upstream project
+#     cd ../core_economics && dbt build && cp target/manifest.json /shared/core_manifest.json
+#
+#     # Step 2 — compile downstream project referencing upstream state
+#     cd ../country_analytics
+#     dbt build --state /shared/  # dbt reads manifest.json from that path
+#
+#   The cross-project ref compiles to the actual schema.table in the DB:
+#     {{ ref('core_economics', 'int_country_metrics') }}
+#     → intermediate.int_country_metrics   (using core_economics's schema config)
+#
+# ─── What "public" means for resolution ─────────────────────────────────────
+#   Only models marked access: public in the upstream project are reachable.
+#   Trying to ref() a protected or private model from another project errors at
+#   compile time — intentional: it enforces domain boundaries.
+# ════════════════════════════════════════════════════════════════════════════════
+
+projects:
+  - name: core_economics
