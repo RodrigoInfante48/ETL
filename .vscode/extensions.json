@@ -1,0 +1,50 @@
+{
+  "recommendations": [
+    // ── dbt ──────────────────────────────────────────────────────────────────
+    // dbt Power User: lineage graph, run/test individual models, query preview,
+    // compiled-SQL diff, column-level lineage, and dbt Cloud integration.
+    "innoverio.vscode-dbt-power-user",
+
+    // ── SQL & data ───────────────────────────────────────────────────────────
+    // SQLTools: run queries against PostgreSQL directly from VS Code.
+    // Add the @sqltools/driver-pg driver for the PostgreSQL connection.
+    "mtxr.sqltools",
+    "mtxr.sqltools-driver-pg",
+
+    // Rainbow CSV: colour-codes CSV seed files and query output exports.
+    "mechatroner.rainbow-csv",
+
+    // ── Markup & config ──────────────────────────────────────────────────────
+    // YAML: schema validation, auto-complete, and hover docs for schema.yml
+    // and sources.yml (combined with yaml.schemas in settings.json above).
+    "redhat.vscode-yaml",
+
+    // Better TOML: for pyproject.toml, if added later.
+    "tamasfe.even-better-toml",
+
+    // ── Python ───────────────────────────────────────────────────────────────
+    // Python: intellisense, linting, and debugging for ETL scripts.
+    "ms-python.python",
+
+    // Ruff: fast Python linter/formatter (replaces black + flake8).
+    "charliermarsh.ruff",
+
+    // Jupyter: open and run world_bank_analysis.ipynb inline.
+    "ms-toolsai.jupyter",
+
+    // ── Git ───────────────────────────────────────────────────────────────────
+    // GitLens: annotates who last changed each line; branch/commit history.
+    "eamodio.gitlens",
+
+    // Git Graph: visual branch/commit graph — useful when switching between
+    // main, claude/add-pyspark-module-hTZ4X, etc.
+    "mhutchie.git-graph",
+
+    // ── Productivity ─────────────────────────────────────────────────────────
+    // DotENV: syntax highlighting for .env files (DB_HOST, DB_PASSWORD, etc.)
+    "mikestead.dotenv",
+
+    // indent-rainbow: colour-codes indentation levels — helps with deep CTEs.
+    "oderwat.indent-rainbow"
+  ]
+}
