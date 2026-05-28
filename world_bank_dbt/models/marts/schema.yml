@@ -2,40 +2,73 @@ version: 2
 
 models:
 
+  # ---------------------------------------------------------------------------
+  # mart_country_summary
+  # One row per country. Historical averages across the full 2000–2023 window
+  # combined with a snapshot of the most recent available year.
+  # ---------------------------------------------------------------------------
   - name: mart_country_summary
     description: >
-      Final country-level analytical model with historical averages, latest-year
-      snapshot, and performance classification. One row per country.
+      Final country-level analytical model designed for BI tools and reporting.
+      Combines historical averages (all reported years) with a latest-year
+      snapshot and a performance classification. One row per country.
+      Grain: country_code (unique).
+    meta:
+      owner: data-engineering
+      domain: economic-indicators
+      freshness_sla: daily
+      source: World Bank Open Data API
+      layer: marts
+    tags:
+      - economic
+      - latam
+      - world_bank
+      - country_profile
     columns:
 
       - name: country_code
-        description: "ISO 2-letter country code"
+        description: >
+          ISO 3166-1 alpha-2 country code (e.g. 'CO', 'BR', 'US').
+          Primary key for this model. One row per country.
         data_tests:
           - unique
           - not_null
 
-      - name: performance_tier
-        description: "Economic performance classification based on latest health score"
-        data_tests:
-          - accepted_values:
-              values: ['High Performer', 'Mid Performer', 'Developing', 'Needs Attention']
+      - name: country_name
+        description: >
+          Full English country name as provided by the World Bank API
+          (e.g. 'Colombia', 'Brazil', 'United States').
 
-      - name: latest_health_score
-        description: "Economic health score 0-100 for the latest reported year"
-        data_tests:
-          - not_null
+      - name: is_latam
+        description: >
+          Boolean flag — TRUE for the 7 Latin American countries in scope:
+          Colombia (CO), Brazil (BR), Mexico (MX), Argentina (AR),
+          Chile (CL), Peru (PE), Ecuador (EC). FALSE for USA, China, Germany.
+          Used to segment LATAM vs. non-LATAM cohorts in BI dashboards.
+
+      - name: years_reported
+        description: >
+          Number of years with complete data for this country within the
+          2000–2023 extract window. Useful for filtering out countries with
+          sparse coverage before computing trend analyses.
+
+      - name: first_year
+        description: >
+          Earliest year with valid data for this country. For most countries
+          this is 2000; earlier values indicate back-filled historical records.
 
       - name: last_year
-        description: "Most recent year of data for this country"
+        description: >
+          Most recent year with valid data for this country.
+          Used as a freshness proxy — if no country has data after 2020 the
+          ETL pipeline has stalled.
         data_tests:
-          # Freshness proxy: if no country has data after 2020 the ETL is stale.
           - dbt_expectations.expect_column_max_to_be_between:
               min_value: 2020
               max_value: 2024
               config:
                 severity: warn
                 alias: mart_country_summary_freshness
-          # Referential integrity: every last_year must exist in mart_global_trend.
           - relationships:
               to: ref('mart_global_trend')
               field: year
@@ -43,12 +76,197 @@ models:
                 severity: error
                 alias: last_year_refs_global_trend
 
+      - name: avg_gdp_usd
+        description: >
+          Average GDP in current USD across all reported years for this country.
+          Rounded to 2 decimal places. Large-economy baseline for cross-country
+          size comparisons (e.g. USA avg ~$18 T vs. Ecuador avg ~$70 B).
+
+      - name: avg_gdp_per_capita_usd
+        description: >
+          Average GDP per capita in current USD across all reported years.
+          Rounded to 2 decimal places. Key welfare proxy used in the
+          economic_health_score formula (50% weight component).
+
+      - name: avg_inflation_pct
+        description: >
+          Average annual inflation rate (%) across all reported years.
+          Rounded to 2 decimal places. Negative values indicate deflation.
+          Extreme outliers (e.g. Argentina hyperinflation episodes) are
+          expected and visible in 6-Sigma control charts.
+
+      - name: avg_unemployment_pct
+        description: >
+          Average unemployment rate (%) across all reported years.
+          Rounded to 2 decimal places. Represents share of the labour force
+          without employment, as reported by the World Bank.
+
+      - name: avg_population
+        description: >
+          Average total population across all reported years (whole number).
+          Useful for weighting economic indicators by country size.
+
+      - name: avg_gdp_growth_pct
+        description: >
+          Average year-over-year GDP growth rate (%) across all reported years.
+          Calculated in int_country_metrics as
+          (gdp_usd_t - gdp_usd_t-1) / gdp_usd_t-1 × 100.
+          NULL for the first year of data (no prior year to compare).
+
+      - name: avg_health_score
+        description: >
+          Average economic health score (0–100 scale) across all reported years.
+          Composite formula — see economic_health_score in int_country_metrics.
+          Higher is better. Rounded to 1 decimal.
+
+      - name: latest_gdp_usd
+        description: >
+          GDP in current USD for the most recent available year (the global
+          max year in the dataset). Snapshot value for current-state dashboards.
+
+      - name: latest_gdp_per_capita_usd
+        description: >
+          GDP per capita in current USD for the most recent available year.
+          Used as the sort key for rank_gdp_per_capita.
+
+      - name: latest_inflation_pct
+        description: >
+          Annual inflation rate (%) for the most recent available year.
+          Compared against the historical average to flag recent deviations.
+
+      - name: latest_unemployment_pct
+        description: >
+          Unemployment rate (%) for the most recent available year.
+          Compared against the historical average to flag labour-market changes.
+
+      - name: latest_population
+        description: >
+          Total population for the most recent available year. Useful for
+          computing per-capita metrics against latest-year GDP figures.
+
+      - name: latest_gdp_growth_pct
+        description: >
+          Year-over-year GDP growth rate (%) for the most recent available year.
+          Positive = economy grew vs. prior year; negative = contraction.
+
+      - name: latest_health_score
+        description: >
+          Economic health score (0–100) for the most recent available year.
+          Drives the performance_tier classification. See formula in
+          int_country_metrics. Rounded to 1 decimal.
+        data_tests:
+          - not_null
+
+      - name: performance_tier
+        description: >
+          Categorical economic performance classification based on
+          latest_health_score. Thresholds:
+            High Performer  → score ≥ 70  (e.g. Germany, USA)
+            Mid Performer   → score ≥ 45  (e.g. China, Chile)
+            Developing      → score ≥ 20  (e.g. Colombia, Peru)
+            Needs Attention → score < 20  (e.g. high-inflation / high-unemployment)
+          Used as a dimension filter in BI reports and stakeholder dashboards.
+        data_tests:
+          - accepted_values:
+              values: ['High Performer', 'Mid Performer', 'Developing', 'Needs Attention']
+
+      - name: rank_gdp_per_capita
+        description: >
+          Rank of this country by latest_gdp_per_capita_usd (1 = highest).
+          Computed with RANK() OVER (ORDER BY latest_gdp_per_capita_usd DESC).
+          Countries with NULL latest values are ranked last (NULLS LAST).
+          Range: 1 to 10 for this 10-country dataset.
+
+
+  # ---------------------------------------------------------------------------
+  # mart_global_trend
+  # One row per year. World-level aggregates for time-series analysis.
+  # ---------------------------------------------------------------------------
   - name: mart_global_trend
-    description: "Global yearly economic aggregates for time-series analysis."
+    description: >
+      Global yearly economic aggregates for time-series and trend analysis.
+      Aggregates all 10 countries in scope into a single worldwide view per year.
+      Grain: year (unique). Ordered ascending by year.
+    meta:
+      owner: data-engineering
+      domain: economic-indicators
+      freshness_sla: daily
+      source: World Bank Open Data API
+      layer: marts
+    tags:
+      - economic
+      - world_bank
+      - global_trend
+      - time_series
     columns:
 
       - name: year
-        description: "Reference year"
+        description: >
+          Calendar year (integer, 2000–2023). Primary key for this model.
+          Represents the reference period for all aggregate metrics in the row.
         data_tests:
           - unique
           - not_null
+
+      - name: countries_count
+        description: >
+          Number of distinct countries with valid data in this year.
+          Expected to be 10 for most years; a lower value indicates missing
+          records for one or more countries in the ETL extract.
+
+      - name: world_gdp_usd
+        description: >
+          Sum of GDP (current USD) across all countries in scope for this year.
+          Proxy for the "world GDP" of the 10-country panel — not a true global
+          total. Rounded to 2 decimal places. Unit: USD.
+
+      - name: avg_gdp_per_capita_usd
+        description: >
+          Simple (unweighted) average of GDP per capita (current USD) across
+          all countries for this year. Note: unweighted — China and Germany
+          receive equal weight. For population-weighted averages use the
+          raw materialized view. Rounded to 2 decimal places.
+
+      - name: avg_inflation_pct
+        description: >
+          Simple average of annual inflation rates (%) across all countries
+          for this year. Positive = general price-level increase.
+          Sensitive to high-inflation outliers (e.g. Argentina). Rounded to 2.
+
+      - name: min_inflation_pct
+        description: >
+          Lowest annual inflation rate (%) observed among the 10 countries
+          in this year. May be negative in deflationary periods (e.g. some
+          years for Germany). Rounded to 2 decimal places.
+
+      - name: max_inflation_pct
+        description: >
+          Highest annual inflation rate (%) observed among the 10 countries
+          in this year. Driven by hyperinflation episodes in Argentina.
+          The gap between max and min is the inflation spread for 6-Sigma
+          control-chart analysis. Rounded to 2 decimal places.
+
+      - name: avg_unemployment_pct
+        description: >
+          Simple average unemployment rate (%) across all countries for this
+          year. Reflects general labour-market conditions in the panel.
+          Rounded to 2 decimal places.
+
+      - name: world_population
+        description: >
+          Sum of total population across all 10 countries for this year.
+          Represents approximately 47% of the world population when all
+          10 countries are present. Rounded to 0 decimal places.
+
+      - name: avg_health_score
+        description: >
+          Simple average of economic_health_score (0–100) across all countries
+          for this year. Tracks the overall economic well-being trajectory of
+          the panel year over year. Rounded to 1 decimal place.
+
+      - name: world_gdp_growth_pct
+        description: >
+          Year-over-year growth rate (%) of world_gdp_usd.
+          Formula: (world_gdp_usd_t - world_gdp_usd_t-1) / world_gdp_usd_t-1 × 100.
+          NULL for year 2000 (no prior year). Negative values mark global
+          contractions (visible dip expected in 2009 and 2020). Rounded to 2.

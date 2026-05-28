@@ -1,0 +1,107 @@
+version: 2
+
+# ---------------------------------------------------------------------------
+# Staging model: stg_economic_indicators
+# This file documents the staging layer — the first transformation step.
+# Source definition lives in sources.yml (same folder).
+# ---------------------------------------------------------------------------
+
+models:
+
+  - name: stg_economic_indicators
+    description: >
+      Staging model that cleans and standardises the raw World Bank extract
+      from public.economic_indicators. Responsibilities:
+        1. Cast all columns to their correct data types (string, integer, numeric).
+        2. Rename columns to the project's snake_case vocabulary
+           (e.g. gdp_current_usd → gdp_usd).
+        3. Filter out rows missing the grain keys (country_code, year, gdp_usd).
+      No business logic or derived metrics here — that belongs in the
+      intermediate layer. Materialised as a view (zero storage cost).
+      Grain: country_code × year (unique combination).
+    meta:
+      owner: data-engineering
+      domain: economic-indicators
+      freshness_sla: daily
+      source: World Bank Open Data API
+      layer: staging
+    tags:
+      - economic
+      - latam
+      - world_bank
+      - staging
+    columns:
+
+      - name: country_code
+        description: >
+          ISO 3166-1 alpha-2 country code identifying the economy.
+          The 10 countries in scope are:
+            LATAM : CO (Colombia), BR (Brazil), MX (Mexico), AR (Argentina),
+                    CL (Chile), PE (Peru), EC (Ecuador)
+            Other : US (United States), CN (China), DE (Germany)
+          Source column: economic_indicators.country_code.
+          Rows with NULL country_code are dropped in the WHERE clause.
+        data_tests:
+          - not_null
+
+      - name: country_name
+        description: >
+          Full English country name as returned by the World Bank API
+          (e.g. 'Colombia', 'United States', 'China').
+          Stored as-is from the source — no normalisation applied.
+          Source column: economic_indicators.country_name.
+
+      - name: year
+        description: >
+          Calendar year of the observation, cast to INTEGER.
+          Valid range: 2000–2023 (enforced via source test in sources.yml).
+          Rows with NULL year are dropped. Forms half of the composite grain.
+          Source column: economic_indicators.year (originally VARCHAR).
+        data_tests:
+          - not_null
+
+      - name: gdp_usd
+        description: >
+          Gross Domestic Product in current US dollars, cast to NUMERIC.
+          Represents the total monetary value of all goods and services
+          produced by the country in the reference year, valued at prices
+          current at that time (not inflation-adjusted).
+          Unit: USD. Range: ~$20 B (Ecuador) to ~$25 T (USA).
+          Rows with NULL gdp_usd are dropped in the WHERE clause.
+          Source column: economic_indicators.gdp_current_usd.
+        data_tests:
+          - not_null
+
+      - name: gdp_per_capita_usd
+        description: >
+          GDP divided by mid-year population, in current US dollars,
+          cast to NUMERIC. Standard welfare and living-standard proxy.
+          Unit: USD per person. Range: ~$2 k (low-income) to ~$65 k (Germany/USA).
+          May be NULL if population is missing for a given year.
+          Source column: economic_indicators.gdp_per_capita_usd.
+
+      - name: inflation_pct
+        description: >
+          Annual consumer price inflation rate expressed as a percentage,
+          cast to NUMERIC. Measured by the consumer price index (CPI)
+          annual growth rate as reported by the World Bank.
+          Positive = prices rising; negative = deflation.
+          May be NULL for years without CPI data.
+          Extreme values expected for Argentina (hyperinflation episodes).
+          Source column: economic_indicators.inflation_annual_pct.
+
+      - name: unemployment_pct
+        description: >
+          Unemployment rate expressed as a percentage of the total labour force,
+          cast to NUMERIC. ILO modelled estimates as reported by the World Bank.
+          Represents persons who are without work, available for work, and
+          actively seeking work. May be NULL for some country/year combinations.
+          Source column: economic_indicators.unemployment_pct.
+
+      - name: population
+        description: >
+          Total mid-year population estimate, cast to NUMERIC (whole number).
+          World Bank series SP.POP.TOTL. Includes all residents regardless of
+          citizenship. Range: ~14 M (Ecuador) to ~1.4 B (China/India scale).
+          Used to compute per-capita denominators.
+          Source column: economic_indicators.population_total.
