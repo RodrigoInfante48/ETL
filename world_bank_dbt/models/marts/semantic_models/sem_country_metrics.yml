@@ -1,0 +1,200 @@
+# =============================================================================
+# Semantic Models — World Bank Economic Indicators
+# dbt Semantic Layer / MetricFlow  (requires dbt-core >= 1.6 + dbt-metricflow)
+#
+# Two semantic models are defined here:
+#   1. sem_country_metrics  — mart_country_summary grain (one row per country)
+#   2. sem_global_trend     — mart_global_trend grain    (one row per year)
+#
+# Relationships between the three MetricFlow concepts:
+#   SemanticModel  = the physical table + entity/dimension/measure definitions
+#   Measure        = an atomic aggregation declared ON the semantic model
+#   Metric         = a business KPI built from one or more measures
+#                    (defined separately in metrics/economic_metrics.yml)
+# =============================================================================
+
+semantic_models:
+
+  # ---------------------------------------------------------------------------
+  # 1. sem_country_metrics
+  #    Source : mart_country_summary
+  #    Grain  : one row per country_code
+  # ---------------------------------------------------------------------------
+  - name: sem_country_metrics
+    description: >
+      Country-level semantic model sourced from mart_country_summary.
+      Covers historical averages (2000–2023) and latest-year snapshots for
+      GDP, inflation, unemployment, population, and the composite
+      economic health score. Primary entity is country_code.
+    model: ref('mart_country_summary')
+
+    # ── Entities ─────────────────────────────────────────────────────────────
+    # An entity is the join key / grain identifier. MetricFlow uses it to link
+    # semantic models and to validate query cardinality.
+    entities:
+      - name: country
+        type: primary          # sole entity → no foreign-key joins needed here
+        expr: country_code
+
+    # ── Dimensions ───────────────────────────────────────────────────────────
+    # Dimensions are "slice-by" / "filter-by" attributes returned alongside
+    # metrics. Categorical dimensions map to VARCHAR / BOOLEAN columns.
+    # Time dimensions must resolve to a DATE/TIMESTAMP expression.
+    dimensions:
+      - name: country_name
+        type: categorical
+        description: Full English country name (e.g. "Colombia", "Germany").
+
+      - name: is_latam
+        type: categorical
+        description: >
+          Boolean flag — true for the 7 Latin American countries
+          (CO, BR, MX, AR, CL, PE, EC), false for USA, China, Germany.
+        expr: is_latam
+
+      - name: performance_tier
+        type: categorical
+        description: >
+          Performance tier derived from latest_health_score:
+          'High Performer' (≥70), 'Mid Performer' (≥45),
+          'Developing' (≥20), 'Needs Attention' (<20).
+
+    # ── Measures ─────────────────────────────────────────────────────────────
+    # Measures are atomic aggregations over physical columns. Metrics are built
+    # on top of measures. A measure belongs to exactly one semantic model.
+    measures:
+
+      # ── GDP ──────────────────────────────────────────────────────────────
+      - name: total_gdp_usd
+        description: Sum of historical-average GDP (USD) across selected countries.
+        agg: sum
+        expr: avg_gdp_usd
+        create_metric: false   # exposed via the explicit metric in economic_metrics.yml
+
+      - name: avg_gdp_usd
+        description: Mean of country-level historical average GDP (USD).
+        agg: average
+        expr: avg_gdp_usd
+
+      - name: avg_gdp_per_capita_usd
+        description: Mean historical GDP per capita (USD) across selected countries.
+        agg: average
+        expr: avg_gdp_per_capita_usd
+
+      # ── Inflation & Unemployment ──────────────────────────────────────────
+      - name: avg_inflation_pct
+        description: >
+          Unweighted mean of country-level historical inflation rates (%).
+          Reflects the central tendency of price pressure across the panel.
+        agg: average
+        expr: avg_inflation_pct
+
+      - name: avg_unemployment_pct
+        description: Mean historical unemployment rate (%) across selected countries.
+        agg: average
+        expr: avg_unemployment_pct
+
+      # ── Economic Health Score ─────────────────────────────────────────────
+      - name: avg_latest_health_score
+        description: >
+          Mean of the latest-year economic health score (0–100) per country.
+          Score combines GDP per capita (50%), inflation penalty (25%),
+          and unemployment penalty (25%).
+        agg: average
+        expr: latest_health_score
+
+      # ── Country Counts ────────────────────────────────────────────────────
+      - name: country_count
+        description: Distinct count of countries in the current query slice.
+        agg: count_distinct
+        expr: country_code
+
+      - name: high_performer_count
+        description: >
+          Count of countries whose latest performance_tier is 'High Performer'
+          (latest_health_score >= 70). Filter is embedded in the measure so
+          the metric definition stays concise.
+        agg: count_distinct
+        expr: country_code
+        filter: |
+          {{ Dimension('country__performance_tier') }} = 'High Performer'
+
+      # ── LATAM sub-aggregations (used by latam_avg_health_score ratio) ─────
+      - name: latam_health_score_sum
+        description: Sum of latest_health_score restricted to LATAM countries.
+        agg: sum
+        expr: latest_health_score
+        filter: |
+          {{ Dimension('country__is_latam') }} = true
+
+      - name: latam_country_count
+        description: Distinct count of LATAM countries in the current query slice.
+        agg: count_distinct
+        expr: country_code
+        filter: |
+          {{ Dimension('country__is_latam') }} = true
+
+  # ---------------------------------------------------------------------------
+  # 2. sem_global_trend
+  #    Source : mart_global_trend
+  #    Grain  : one row per year (2000–2023)
+  # ---------------------------------------------------------------------------
+  - name: sem_global_trend
+    description: >
+      Year-level semantic model sourced from mart_global_trend.
+      Provides world-level aggregates per calendar year: total GDP, average
+      inflation and unemployment, world population, average health score,
+      and the pre-computed YoY GDP growth rate.
+    model: ref('mart_global_trend')
+
+    # ── Entities ─────────────────────────────────────────────────────────────
+    # year is an INTEGER in the model; cast to VARCHAR to satisfy entity key rules.
+    entities:
+      - name: trend_year
+        type: primary
+        expr: "cast(year as varchar)"
+
+    # ── Dimensions ───────────────────────────────────────────────────────────
+    # The time dimension requires a DATE expression. make_date() converts the
+    # integer year to Jan-1 of that year so MetricFlow can handle granularity.
+    dimensions:
+      - name: report_year
+        type: time
+        type_params:
+          time_granularity: year
+        description: Calendar year of the observation (2000–2023), as a date.
+        expr: "make_date(year, 1, 1)"
+
+    # ── Measures ─────────────────────────────────────────────────────────────
+    measures:
+      - name: world_gdp_usd
+        description: >
+          Sum of GDP (USD) across all 10 tracked countries for the year.
+          Aggregation is SUM even though the mart already groups by year;
+          MetricFlow re-aggregates if multiple years are selected.
+        agg: sum
+        expr: world_gdp_usd
+
+      - name: avg_global_inflation_pct
+        description: Simple average of country inflation rates for the year.
+        agg: average
+        expr: avg_inflation_pct
+
+      - name: world_population
+        description: Total population summed across all 10 countries for the year.
+        agg: sum
+        expr: world_population
+
+      - name: avg_global_health_score
+        description: Mean economic health score across all countries for the year.
+        agg: average
+        expr: avg_health_score
+
+      - name: avg_gdp_growth_pct
+        description: >
+          Pre-computed world GDP YoY growth rate (%) from mart_global_trend.
+          Derived via LAG() in the underlying model; null for year 2000.
+          Exposed as an AVERAGE measure — when querying a single year it
+          returns the exact stored value.
+        agg: average
+        expr: world_gdp_growth_pct
