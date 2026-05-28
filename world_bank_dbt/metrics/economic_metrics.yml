@@ -1,0 +1,118 @@
+# =============================================================================
+# Metrics — World Bank Economic Indicators
+# dbt Semantic Layer / MetricFlow  (requires dbt-core >= 1.6 + dbt-metricflow)
+#
+# These five metrics are the "business KPIs" layer. Each references one or
+# two measures defined in models/marts/semantic_models/sem_country_metrics.yml.
+#
+# Metric types used here:
+#   simple   — a single measure, optionally with a WHERE filter
+#   ratio    — numerator measure ÷ denominator measure
+#   derived  — arithmetic expression combining other metrics (see gdp_growth_yoy)
+#
+# Directory: metrics/ is registered in dbt_project.yml under metric-paths.
+# =============================================================================
+
+metrics:
+
+  # 1. total_world_gdp --------------------------------------------------------
+  # Type   : simple (sum)
+  # Source : sem_country_metrics.total_gdp_usd
+  # Use    : headline KPI for economic size of the panel.
+  # BI note: slice by performance_tier or is_latam to compare sub-totals.
+  - name: total_world_gdp
+    label: "Total World GDP (USD)"
+    description: >
+      Sum of historical-average GDP (USD) across all tracked countries.
+      Represents the aggregate economic footprint of the 10-country panel
+      over the 2000–2023 study period.
+    type: simple
+    type_params:
+      measure:
+        name: total_gdp_usd
+
+  # 2. avg_global_inflation ---------------------------------------------------
+  # Type   : simple (average)
+  # Source : sem_country_metrics.avg_inflation_pct
+  # Use    : central tendency of price pressure; benchmark for monetary policy.
+  - name: avg_global_inflation
+    label: "Avg Global Inflation (%)"
+    description: >
+      Unweighted average of country-level historical inflation rates (%).
+      Each country contributes equally regardless of economic size.
+      Can be filtered with is_latam or performance_tier dimensions.
+    type: simple
+    type_params:
+      measure:
+        name: avg_inflation_pct
+
+  # 3. high_performer_count ---------------------------------------------------
+  # Type   : simple (count_distinct) with embedded dimension filter
+  # Source : sem_country_metrics.high_performer_count
+  # The filter lives inside the measure (performance_tier = 'High Performer'),
+  # so the metric itself needs no additional where clause.
+  # Use    : governance KPI — how many countries achieved top-tier status.
+  - name: high_performer_count
+    label: "High Performer Country Count"
+    description: >
+      Number of distinct countries whose latest economic health score (0–100)
+      places them in the 'High Performer' tier (score >= 70).
+      Divide by country_count to get the proportion of high performers.
+    type: simple
+    type_params:
+      measure:
+        name: high_performer_count
+
+  # 4. gdp_growth_yoy ---------------------------------------------------------
+  # Type   : simple (average of pre-computed column)
+  # Source : sem_global_trend.avg_gdp_growth_pct
+  #
+  # Design note — two valid approaches:
+  #
+  #   Option A (used here): expose the mart's pre-computed world_gdp_growth_pct
+  #   column directly. Simple and fast; the LAG() logic lives in SQL.
+  #
+  #   Option B (pure MetricFlow ratio):
+  #     type: ratio
+  #     type_params:
+  #       numerator:   world_gdp_usd         (current year)
+  #       denominator: world_gdp_usd         (prior year)
+  #   Option B requires a time-offset window function that MetricFlow supports
+  #   via `fill_nulls_with` and `offset_window` on the metric. Option A is
+  #   preferred here because the mart already provides the canonical value used
+  #   everywhere else in the pipeline (email report, materialized views).
+  - name: gdp_growth_yoy
+    label: "World GDP YoY Growth (%)"
+    description: >
+      World GDP year-over-year growth rate (%) as computed by the LAG() window
+      function in mart_global_trend. Null for 2000 (no prior-year baseline).
+      Slice by report_year to see the full growth time-series.
+    type: simple
+    type_params:
+      measure:
+        name: avg_gdp_growth_pct
+
+  # 5. latam_avg_health_score -------------------------------------------------
+  # Type   : ratio  (sum of LATAM scores ÷ count of LATAM countries)
+  # Source : sem_country_metrics.latam_health_score_sum /
+  #          sem_country_metrics.latam_country_count
+  #
+  # Why ratio instead of a filtered simple metric?
+  # A "filtered average" (SUM/COUNT) is the correct aggregation pattern when
+  # the pre-filter group size can vary across query slices. Using a ratio
+  # metric makes the denominator explicit and prevents incorrect averages-of-
+  # averages when MetricFlow further groups the result (e.g. by report_year
+  # after joining with sem_global_trend).
+  - name: latam_avg_health_score
+    label: "LATAM Avg Health Score"
+    description: >
+      Average latest economic health score (0–100) for the 7 Latin American
+      countries (Colombia, Brazil, Mexico, Argentina, Chile, Peru, Ecuador).
+      Compare against avg_latest_health_score (all countries) to gauge the
+      LATAM gap or premium relative to the global panel.
+    type: ratio
+    type_params:
+      numerator:
+        name: latam_health_score_sum
+      denominator:
+        name: latam_country_count
