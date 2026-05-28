@@ -1,0 +1,163 @@
+# =============================================================================
+# dbt Production — fires on every merge (push) to main
+#
+# Failure notifications
+# ──────────────────────
+# GitHub Actions has no native "email on failure" step, but there are several
+# options depending on what you have available:
+#
+#   A) GitHub Issue (built-in, no external service needed)
+#      The "Notify on failure" step below opens a GitHub issue labelled
+#      `dbt-failure` so the team sees it in the repo's issue tracker.
+#
+#   B) Slack   — use slackapi/slack-github-action  (needs SLACK_BOT_TOKEN secret)
+#   C) Email   — use dawidd6/action-send-mail       (needs SMTP secrets)
+#   D) PagerDuty — POST to the Events API v2 endpoint
+#
+# The manifest.json uploaded at the end of this job is what dbt_ci.yml
+# downloads as its "prod baseline" for state:modified+ Slim CI comparisons.
+# =============================================================================
+
+name: dbt Production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "world_bank_dbt/**"
+      - ".github/workflows/dbt_prod.yml"
+  # Allow manual trigger from the Actions tab
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: "Reason for manual run"
+        required: false
+        default: "Manual trigger"
+
+env:
+  PYTHON_VERSION: "3.11"
+  DBT_VERSION: "dbt-core==1.8.* dbt-postgres==1.8.*"
+
+jobs:
+  dbt-prod:
+    name: Production build & test
+    runs-on: ubuntu-latest
+    environment: production   # requires manual approval if configured in repo settings
+
+    steps:
+      # ── 1. Checkout ──────────────────────────────────────────────────────────
+      - name: Checkout main
+        uses: actions/checkout@v4
+
+      # ── 2. Python + pip cache ────────────────────────────────────────────────
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      # ── 3. dbt package cache ─────────────────────────────────────────────────
+      - name: Cache dbt packages
+        uses: actions/cache@v4
+        with:
+          path: world_bank_dbt/dbt_packages
+          key: dbt-pkgs-${{ runner.os }}-${{ hashFiles('world_bank_dbt/packages.yml') }}
+          restore-keys: dbt-pkgs-${{ runner.os }}-
+
+      # ── 4. Install dbt ───────────────────────────────────────────────────────
+      - name: Install dbt
+        run: pip install --quiet ${{ env.DBT_VERSION }}
+
+      # ── 5. dbt deps ──────────────────────────────────────────────────────────
+      - name: dbt deps
+        working-directory: world_bank_dbt
+        run: dbt deps
+
+      # ── 6. dbt build --target prod ───────────────────────────────────────────
+      #    `dbt build` = models + tests, node-by-node in DAG order.
+      #    In prod we run the full graph (no --select) to catch everything.
+      #    If you prefer separate run→test for full visibility: swap for
+      #      dbt run --target prod --profiles-dir .
+      #      dbt test --target prod --profiles-dir .
+      - name: dbt build (full graph)
+        id: dbt-build
+        working-directory: world_bank_dbt
+        env:
+          DBT_TARGET: prod
+          DB_HOST: ${{ secrets.PROD_DB_HOST }}
+          DB_PORT: ${{ secrets.PROD_DB_PORT }}
+          DB_USER: ${{ secrets.PROD_DB_USER }}
+          DB_PASSWORD: ${{ secrets.PROD_DB_PASSWORD }}
+          DB_NAME: ${{ secrets.PROD_DB_NAME }}
+        run: dbt build --target prod --profiles-dir .
+
+      # ── 7. Upload manifest for Slim CI comparisons ───────────────────────────
+      #    dbt_ci.yml downloads this artifact as its "prod baseline".
+      #    Retention: 30 days is long enough — CI only looks at the latest run.
+      - name: Upload prod manifest (Slim CI baseline)
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dbt-prod-manifest
+          path: world_bank_dbt/target/manifest.json
+          retention-days: 30
+
+      # ── 8. Write job summary ─────────────────────────────────────────────────
+      - name: Write run summary
+        if: always()
+        run: |
+          STATUS="${{ steps.dbt-build.outcome }}"
+          if [ "$STATUS" = "success" ]; then
+            echo "## ✅ dbt production run succeeded" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "## ❌ dbt production run FAILED" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "- **Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Triggered by:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Time:** $(date -u +'%Y-%m-%d %H:%M UTC')" >> $GITHUB_STEP_SUMMARY
+
+      # ── 9. Notify on failure ─────────────────────────────────────────────────
+      #
+      # Option A (shown): create a GitHub issue — zero external dependencies.
+      # Option B — Slack (uncomment and add SLACK_BOT_TOKEN + SLACK_CHANNEL_ID secrets):
+      #   - uses: slackapi/slack-github-action@v1
+      #     with:
+      #       channel-id: ${{ secrets.SLACK_CHANNEL_ID }}
+      #       slack-message: "❌ dbt prod failed on `${{ github.sha }}` — ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+      #     env:
+      #       SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+      #
+      # Option C — Email (uncomment and add MAIL_* secrets):
+      #   - uses: dawidd6/action-send-mail@v3
+      #     with:
+      #       server_address: ${{ secrets.MAIL_HOST }}
+      #       server_port: 587
+      #       username: ${{ secrets.MAIL_USER }}
+      #       password: ${{ secrets.MAIL_PASSWORD }}
+      #       subject: "❌ dbt production run failed"
+      #       to: roesinf2@gmail.com
+      #       from: "dbt CI <noreply@yourorg.com>"
+      #       body: "Run ${{ github.run_id }} failed. See ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+      - name: Notify on failure (GitHub Issue)
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const runUrl =
+              `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}` +
+              `/actions/runs/${context.runId}`;
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              title: `🚨 dbt production run failed — ${new Date().toISOString().slice(0,10)}`,
+              body: [
+                '## dbt Production Failure',
+                '',
+                `**Run:** ${runUrl}`,
+                `**Commit:** \`${context.sha.slice(0,7)}\` by @${context.actor}`,
+                `**Branch:** \`${context.ref}\``,
+                '',
+                'Check the workflow logs for the failing model and test output.',
+              ].join('\n'),
+              labels: ['dbt-failure', 'production'],
+            });
