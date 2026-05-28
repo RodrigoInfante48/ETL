@@ -1,0 +1,7 @@
+version: 2
+
+groups:
+  - name: reporting_team
+    owner:
+      name: "Data & Reporting Team"
+      email: "reporting@worldbank-etl.io"

@@ -1,0 +1,8 @@
+# reporting_layer depends on BOTH upstream projects.
+# It reaches country_analytics's public marts directly.
+# It does NOT need to declare core_economics here because it never calls
+# {{ ref('core_economics', ...) }} — it only refs country_analytics models.
+# Declaring unnecessary upstream projects would create ghost lineage edges.
+
+projects:
+  - name: country_analytics

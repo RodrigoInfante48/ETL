@@ -1,0 +1,41 @@
+name: 'core_economics'
+version: '1.0.0'
+config-version: 2
+
+# Each project in the mesh has its own profile entry in ~/.dbt/profiles.yml
+profile: 'core_economics'
+
+model-paths: ["models"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+# ─── Global test severity ────────────────────────────────────────────────────
+tests:
+  +severity: error
+
+# ─── Model-level defaults ────────────────────────────────────────────────────
+# Access is set here as a floor; individual models override upward to 'public'.
+#
+#   private   — only models in the same group can ref this model
+#   protected — any model in THIS project can ref it (dbt default)
+#   public    — any model in ANY project can ref it (requires dependencies.yml
+#               in consumer projects and dbt Cloud Metadata API, or shared
+#               manifest.json in dbt Core)
+#
+models:
+  core_economics:
+    staging:
+      +materialized: view
+      +access: protected        # stg_ models are internal; never cross-project
+      +tags: ["staging", "core_economics"]
+    intermediate:
+      +materialized: view
+      +access: protected        # default; int_country_metrics overrides to public
+      +tags: ["intermediate", "core_economics"]

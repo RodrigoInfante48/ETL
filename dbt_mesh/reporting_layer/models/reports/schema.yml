@@ -1,0 +1,51 @@
+version: 2
+
+models:
+  - name: rpt_email_country_summary
+    description: >
+      Email-ready country table. Adds region_label, a tier emoji indicator,
+      and GDP per capita in thousands for compact display. Consumed directly
+      by Email Automation / generate_report.py.
+    group: reporting_team
+    access: protected
+
+    columns:
+      - name: country_code
+        tests: [not_null, unique]
+      - name: country_name
+        tests: [not_null]
+      - name: region_label
+        tests:
+          - accepted_values:
+              values: ['LATAM', 'Global']
+      - name: performance_tier
+        tests:
+          - accepted_values:
+              values: ['High Performer', 'Mid Performer', 'Developing', 'Needs Attention']
+      - name: tier_indicator
+        description: Single emoji char for HTML email rendering (🟢 🟡 🟠 🔴).
+      - name: rank_gdp_per_capita
+        tests: [not_null]
+      - name: latest_health_score
+      - name: gdp_per_capita_k
+        description: latest_gdp_per_capita_usd / 1000, rounded to 1 decimal.
+
+  - name: rpt_email_global_trend
+    description: >
+      Email-ready global trend time series. Adds GDP in trillions, economic
+      regime label, and notable event annotation for narrative-rich HTML reports.
+    group: reporting_team
+    access: protected
+
+    columns:
+      - name: year
+        tests: [not_null, unique]
+      - name: world_gdp_trillions
+        description: world_gdp_usd / 1e12, rounded to 2 decimals.
+      - name: world_gdp_growth_pct
+      - name: economic_regime
+        tests:
+          - accepted_values:
+              values: ['Contraction', 'Slow Growth', 'Moderate Growth', 'Strong Growth']
+      - name: notable_event
+        description: Human-readable annotation (NULL when unremarkable).

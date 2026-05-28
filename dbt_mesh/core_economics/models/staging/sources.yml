@@ -1,0 +1,32 @@
+version: 2
+
+sources:
+  - name: world_bank
+    description: Raw economic indicators loaded by the Python ETL pipeline.
+    database: world_bank_db
+    schema: public
+    tables:
+      - name: economic_indicators
+        description: >
+          Raw World Bank API data — 10 countries × 24 years (2000–2023),
+          5 economic indicators per row.
+        columns:
+          - name: country_code
+            description: ISO 3166-1 alpha-2 country code.
+            tests:
+              - not_null
+          - name: year
+            description: Observation year (integer).
+            tests:
+              - not_null
+              - dbt_expectations.expect_column_values_to_be_between:
+                  min_value: 2000
+                  max_value: 2023
+                  severity: error
+          - name: gdp_current_usd
+            description: Gross Domestic Product in current USD.
+            tests:
+              - dbt_expectations.expect_column_values_to_be_between:
+                  min_value: 0
+                  strictly: true
+                  severity: error

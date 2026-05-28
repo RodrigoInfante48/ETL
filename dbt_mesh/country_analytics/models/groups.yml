@@ -1,0 +1,7 @@
+version: 2
+
+groups:
+  - name: country_analytics_team
+    owner:
+      name: "Country Analytics Team"
+      email: "country-analytics@worldbank-etl.io"
