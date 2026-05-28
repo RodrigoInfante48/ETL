@@ -8,13 +8,38 @@ sources:
       - name: economic_indicators
         description: "Raw economic indicators from World Bank API ETL pipeline"
         columns:
+
           - name: country_code
-            description: "ISO 2-letter country code"
+            description: "ISO 2-letter country code (CO, BR, MX, AR, CL, PE, EC, US, CN, DE)"
             data_tests:
               - not_null
+              # Proportion of unique values: 10 countries / ~240 rows ≈ 0.04.
+              # Min 0.03 catches missing countries; max 0.15 catches dirty extra codes.
+              - dbt_expectations.expect_column_proportion_of_unique_values_to_be_between:
+                  min_value: 0.03
+                  max_value: 0.15
+                  config:
+                    severity: warn
+                    alias: country_code_unique_proportion
+
           - name: year
-            description: "Reference year"
+            description: "Reference year — must be within the World Bank extract window"
             data_tests:
               - not_null
+              - dbt_expectations.expect_column_values_to_be_between:
+                  min_value: 2000
+                  max_value: 2023
+                  config:
+                    severity: error
+                    alias: year_range_2000_2023
+
           - name: gdp_current_usd
-            description: "GDP in current USD"
+            description: "GDP in current USD — must be strictly positive"
+            data_tests:
+              - dbt_expectations.expect_column_values_to_be_between:
+                  min_value: 0
+                  strictly: true     # generates > 0, not >= 0
+                  row_condition: "gdp_current_usd is not null"
+                  config:
+                    severity: error
+                    alias: gdp_must_be_positive

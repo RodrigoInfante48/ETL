@@ -15,6 +15,23 @@ clean-targets:
   - "target"
   - "dbt_packages"
 
+# ---------------------------------------------------------------------------
+# on-run-end: fires after `dbt test`, `dbt build`, and `dbt run`.
+# The macro inspects results[], filters for test nodes, and logs a summary.
+# ---------------------------------------------------------------------------
+on-run-end:
+  - "{{ alert_on_test_failure() }}"
+
+# ---------------------------------------------------------------------------
+# Global test defaults.
+# Individual tests can override severity in their own config: block.
+#   severity: error  → command exits non-zero (blocks CI)
+#   severity: warn   → logged but command exits 0 (advisory, never blocks CI)
+# ---------------------------------------------------------------------------
+tests:
+  world_bank_dbt:
+    +severity: error   # default; override per-test where a warning is enough
+
 models:
   world_bank_dbt:
     staging:
